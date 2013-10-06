@@ -2,6 +2,7 @@
  *  Hamlib FlexRadio backend - 6K series rigs
  *  Copyright (c) 2002-2009 by Stephane Fillod
  *  Copyright (C) 2010,2011,2012,2013 by Nate Bargmann, n0nb@arrl.net
+ *  Copyright (C) 2013 by Steve Conklin AI4QR, steve@conklinhouse.com
  *
  *   This library is free software; you can redistribute it and/or
  *   modify it under the terms of the GNU Lesser General Public
@@ -92,15 +93,7 @@ const struct rig_caps f6k_caps = {
 	.ptt_type =		RIG_PTT_RIG,
 	.dcd_type =		RIG_DCD_NONE,
 	.port_type =		RIG_PORT_NETWORK,
-	//.serial_rate_min =	4800,
-	//.serial_rate_max =	38400,
-	//.serial_data_bits =	8,
-	//.serial_stop_bits =	2,
-	//.serial_parity =	RIG_PARITY_NONE,
-	//.serial_handshake =	RIG_HANDSHAKE_NONE,
-	//.write_delay =		0,	/* Timing between bytes */
-	//.post_write_delay =	100,	/* Timing between command strings */
-	// -spc- TODO set this reasonably
+	// -spc- TODO set this reasonably, don't know what the flex should be
 	.timeout =		600,	/* FA and FB make take up to 500 ms on band change */
 	.retry =		3,
 
