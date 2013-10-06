@@ -47,13 +47,16 @@
 
 
 static rmode_t flex_mode_table[KENWOOD_MODE_TABLE_MAX] = {
-    [0] = RIG_MODE_LSB,
-    [1] = RIG_MODE_USB,
-    [2] = RIG_MODE_CW,
-    [3] = RIG_MODE_FM,
-    [4] = RIG_MODE_AM,
-    [5] = RIG_MODE_PKTLSB, // DIGL
-    [6] = RIG_MODE_PKTUSB, // DIGU
+	[0] = RIG_MODE_NONE,
+	[1] = RIG_MODE_LSB,
+	[2] = RIG_MODE_USB,
+	[3] = RIG_MODE_CW,
+	[4] = RIG_MODE_FM,
+	[5] = RIG_MODE_AM,
+	[6] = RIG_MODE_PKTLSB,
+	[7] = RIG_MODE_NONE,
+	[8] = RIG_MODE_NONE,
+	[9] = RIG_MODE_PKTUSB
 };
 
 static struct kenwood_priv_caps f6k_priv_caps  = {
