@@ -29,3 +29,42 @@ ZZMD Slice receiver A DSP Mode
 ZZME Slice receiver B DSP Mode
 ZZSW Set slice Transmit flag (RX A or RX B)
 ZZTX Set MOX (on/off)
+
+================================================
+rigctl commands used to test operation
+(freq set and read)
+f
+F 14100000
+F 14070000
+
+(transceive on to test)
+a
+A ON
+
+(mode set and read with passband)
+m
+[returns mode:FM and passband of 13000]
+[Command to rig: 'MD', returned 'MD3'
+
+(vfo set and read)
+v
+V VFOB
+[opens with a 5K split]
+
+(set and get split freq)
+i
+I 14078000
+[ Even if split is turned off, this sets VFOB]
+
+(split set and read)
+s
+[ shows split and VFOA is TX]
+S 1 VFOA
+s
+[Error? Shows split mode still off]
+S 1 VFOB
+[shows split ON and VFOB TX, but VFOA is still TX on rig]
+NOTE: When split off, TX VFO is always A
+
+
+
