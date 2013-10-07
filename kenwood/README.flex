@@ -68,10 +68,6 @@ l KEYSPD
 (filter edges)
 l SLOPE_HIGH
 l SLOPE_LOW
-NOTE!! - these accept and report the index not the actual values.
-FIX
-
-TEST FILTERS, they're in the code!
 
 ===
 Supported:
