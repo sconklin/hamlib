@@ -39,5 +39,4 @@ struct flexradio_priv_data {
 /* Flexradio extension function declarations */
 int flexradio_open(RIG *rig);
 
-
 #endif /* _FLEXRADIO_H */

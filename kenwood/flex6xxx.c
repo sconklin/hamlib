@@ -40,6 +40,8 @@
 
 #define F6K_FUNC_ALL (RIG_FUNC_VOX)
 
+#define F6K_LEVEL_ALL (RIG_LEVEL_SLOPE_HIGH|RIG_LEVEL_SLOPE_LOW|RIG_LEVEL_KEYSPD)
+
 #define F6K_VFO (RIG_VFO_A|RIG_VFO_B)
 #define F6K_VFO_OP (RIG_OP_UP|RIG_OP_DOWN)
 
@@ -64,23 +66,197 @@ static struct kenwood_priv_caps f6k_priv_caps  = {
 	.mode_table = flex_mode_table,
 };
 
+#define DSP_BW_NUM 8
 
-/* F6K specific function declarations */
-//int f6k_get_mode(RIG *rig, vfo_t vfo, rmode_t *mode, pbwidth_t *width);
-//int f6k_set_mode(RIG *rig, vfo_t vfo, rmode_t mode, pbwidth_t width);
-//int f6k_set_vfo(RIG *rig, vfo_t vfo);
-//int f6k_set_ext_level(RIG *rig, vfo_t vfo, token_t token, value_t val);
-//int f6k_get_ext_level(RIG *rig, vfo_t vfo, token_t token, value_t *val);
-//int f6k_set_rit(RIG * rig, vfo_t vfo, shortfreq_t rit);
-//int f6k_set_xit(RIG * rig, vfo_t vfo, shortfreq_t rit);
-//int f6k_set_split_mode(RIG *rig, vfo_t vfo, rmode_t tx_mode, pbwidth_t tx_width);
-//int f6k_get_split_mode(RIG *rig, vfo_t vfo, rmode_t *tx_mode, pbwidth_t *tx_width);
-//int f6k_get_level(RIG *rig, vfo_t vfo, setting_t level, value_t *val);
-//int f6k_get_func(RIG *rig, vfo_t vfo, setting_t func, int *status);
+static int dsp_bw_ssb[DSP_BW_NUM] = {
+  4000, 3300, 2900, 2700, 2400, 2100, 1800, 1600
+};
+
+static int dsp_bw_am[DSP_BW_NUM] = {
+  20000, 16000, 14000, 12000, 10000, 8000, 6000, 5600
+};
+
+static int dsp_bw_cw[DSP_BW_NUM] = {
+  3000, 1500, 1000, 800, 400, 250, 100, 50
+};
+
+static int dsp_bw_dig[DSP_BW_NUM] = {
+  3000, 2000, 1500, 1000, 600, 300, 150, 100
+};
 
 /* Private helper functions */
-int set_rit_xit(RIG *rig, shortfreq_t rit);
 
+static int flex6k_get_mode(RIG *rig, vfo_t vfo, rmode_t *mode, pbwidth_t *width)
+{
+  rig_debug(RIG_DEBUG_VERBOSE, "%s called\n", __func__);
+
+  if (!rig || !mode || !width)
+    return -RIG_EINVAL;
+
+  struct kenwood_priv_caps *caps = kenwood_caps(rig);
+
+  char modebuf[10];
+  int index;
+  int retval;
+
+  retval = kenwood_safe_transaction(rig, "MD", modebuf, 6, 4);
+  if (retval != RIG_OK)
+    return retval;
+
+  *mode = kenwood2rmode(modebuf[2] - '0', caps->mode_table);
+
+  if ((vfo == RIG_VFO_VFO) || (vfo == RIG_VFO_CURR)) {
+    vfo = rig->state.current_vfo;
+    rig_debug(RIG_DEBUG_VERBOSE, "%s: setting VFO to current\n", __func__);
+  }
+
+  /*
+   * The Flex CAT interface does not support FW for reading filter width,
+   * so use the ZZFI or ZZFJ command
+   */
+  switch (vfo) {
+  case RIG_VFO_A:
+    retval = kenwood_safe_transaction(rig, "ZZFI", modebuf, 10, 7);
+    break;
+  case RIG_VFO_B:
+    retval = kenwood_safe_transaction(rig, "ZZFJ", modebuf, 10, 7);
+    break;
+  default:
+    rig_debug(RIG_DEBUG_ERR, "%s: unsupported VFO %d\n", __func__, vfo);
+    return -RIG_EINVAL;
+  }
+
+  if (retval != RIG_OK)
+    return retval;
+
+  index = atoi(&modebuf[4]);
+  if (index >= DSP_BW_NUM) {
+    rig_debug(RIG_DEBUG_ERR,
+	      "flex6k_get_mode: unexpected ZZF[IJ] answer, index=%d\n", index);
+    return -RIG_ERJCTED;
+  }
+
+  switch (*mode) {
+  case RIG_MODE_AM:
+    *width = dsp_bw_am[index];
+    break;
+  case RIG_MODE_CW:
+    *width = dsp_bw_cw[index];
+    break;
+  case RIG_MODE_USB:
+  case RIG_MODE_LSB:
+    *width = dsp_bw_ssb[index];
+    break;
+    //case RIG_MODE_FM:
+    //*width = 3000; /* not supported yet, needs followup */
+    //break;
+  case RIG_MODE_PKTLSB:
+  case RIG_MODE_PKTUSB:
+    *width = dsp_bw_dig[index];
+    break;
+  default:
+    rig_debug(RIG_DEBUG_ERR, "%s: unsupported mode %d, setting default BW\n", __func__, *mode);
+    *width = 3000;
+    break;
+  }
+  return RIG_OK;
+}
+
+static int flex6k_find_width(rmode_t mode, pbwidth_t width, int *ridx)
+{
+  int *w_a; // Width array, these are all ordered in descending order!
+  int idx = 0;
+
+  rig_debug(RIG_DEBUG_VERBOSE, "%s called\n", __func__);
+
+  switch (mode) {
+  case RIG_MODE_AM:
+    w_a = dsp_bw_am;
+    break;
+  case RIG_MODE_CW:
+    w_a = dsp_bw_cw;
+    break;
+  case RIG_MODE_USB:
+  case RIG_MODE_LSB:
+    w_a = dsp_bw_ssb;
+    break;
+    //case RIG_MODE_FM:
+    //*width = 3000; /* not supported yet, needs followup */
+    //break;
+  case RIG_MODE_PKTLSB:
+  case RIG_MODE_PKTUSB:
+    w_a = dsp_bw_dig;
+    break;
+  default:
+    rig_debug(RIG_DEBUG_ERR, "%s: unsupported mode %d\n", __func__, mode);
+    return -RIG_EINVAL;
+  }
+
+  // return the first smaller or equal possibility
+  while((idx < DSP_BW_NUM) && (w_a[idx] > width))
+    idx++;
+  if (idx >= DSP_BW_NUM) {
+    idx = DSP_BW_NUM - 1;
+  }
+
+  *ridx = idx;
+  return RIG_OK;
+}
+
+static int flex6k_set_mode(RIG *rig, vfo_t vfo, rmode_t mode, pbwidth_t width)
+{
+  rig_debug(RIG_DEBUG_VERBOSE, "%s called\n", __func__);
+
+  if (!rig)
+    return -RIG_EINVAL;
+
+  struct kenwood_priv_caps *caps = kenwood_caps(rig);
+  char buf[10];
+  char kmode;
+  int idx;
+  int err;
+
+  kmode = rmode2kenwood(mode, caps->mode_table);
+  if (kmode < 0 ) {
+    rig_debug(RIG_DEBUG_WARN, "%s: unsupported mode '%s'\n",
+	      __func__, rig_strrmode(mode));
+    return -RIG_EINVAL;
+  }
+
+  sprintf(buf, "MD%c", '0' + kmode);
+  err = kenwood_simple_cmd(rig, buf);
+  if (err != RIG_OK)
+    return err;
+
+  err = flex6k_find_width(mode, width, &idx);
+  if (err != RIG_OK)
+    return err;
+
+  if ((vfo == RIG_VFO_VFO) || (vfo == RIG_VFO_CURR)) {
+    vfo = rig->state.current_vfo;
+    rig_debug(RIG_DEBUG_VERBOSE, "%s: setting VFO to current\n", __func__);
+  }
+  /*
+   * The Flex CAT interface does not support FW for reading filter width,
+   * so use the ZZFI or ZZFJ command
+   */
+  switch (vfo) {
+  case RIG_VFO_A:
+    sprintf(buf, "ZZFI%02d;", idx);
+    break;
+  case RIG_VFO_B:
+    sprintf(buf, "ZZFJ%02d;", idx);
+    break;
+  default:
+    rig_debug(RIG_DEBUG_ERR, "%s: unsupported VFO %d\n", __func__, vfo);
+    return -RIG_EINVAL;
+  }
+
+  err = kenwood_simple_cmd(rig, buf);
+  if (err != RIG_OK)
+    return err;
+  return RIG_OK;
+}
 
 /*
  * F6K rig capabilities.
@@ -102,8 +278,8 @@ const struct rig_caps f6k_caps = {
 
 	.has_get_func =		RIG_FUNC_NONE, /* has VOX but not implemented here */
 	.has_set_func =		RIG_FUNC_NONE,
-	.has_get_level =	RIG_LEVEL_NONE,
-	.has_set_level =	RIG_LEVEL_NONE,
+	.has_get_level =	F6K_LEVEL_ALL,
+	.has_set_level =	F6K_LEVEL_ALL,
 	.has_get_parm =		RIG_PARM_NONE,
 	.has_set_parm =		RIG_PARM_NONE,	/* FIXME: parms */
 	.level_gran =		{},		/* FIXME: granularity */
@@ -184,17 +360,18 @@ const struct rig_caps f6k_caps = {
 	.rig_open =		flexradio_open,
 	.set_freq =		kenwood_set_freq,
 	.get_freq =		kenwood_get_freq,
-	.set_mode =		kenwood_set_mode,
-	.get_mode =		kenwood_get_mode,
+	.set_mode =		flex6k_set_mode,
+	.get_mode =		flex6k_get_mode,
 	.set_vfo =		kenwood_set_vfo,
 	.get_vfo =		kenwood_get_vfo_if,
-	//.set_split_mode =	kenwood_set_split_mode,
-	//.get_split_mode =	kenwood_get_split_mode,
 	.set_split_vfo =	kenwood_set_split_vfo,
 	.get_split_vfo =	kenwood_get_split_vfo_if,
 	.get_ptt =		kenwood_get_ptt,
 	.set_ptt =		kenwood_set_ptt,
-	 // -spc- stopped
+	// TODO copy over kenwood_[set|get]_level and modify to handle DSP filter values
+	// correctly - use actual values instead of indices
+	.set_level =		kenwood_set_level,
+	.get_level =		kenwood_get_level,
 	 //.set_ant =		kenwood_set_ant_no_ack,
 	 //.get_ant =		kenwood_get_ant,
 };
